@@ -2,21 +2,28 @@
 REACT agent implementation with reflection mechanism for answer completeness.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.output_parsers import StrOutputParser
 
 from .tools import CompanyDirectorsTool, WebSearchTool, VectorRerankerSearchTool, LinkedinScraperTool
+from store.persistent import PersistentStore
 
 
 class ReactWithReflection:
     """Enhanced REACT agent with reflection mechanism for answer completeness."""
 
-    def __init__(self, config: Dict[str, Any], director_strings: dict):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        director_strings: dict,
+        persistent_store: PersistentStore,
+    ):
         self.config = config
         self.director_strings = director_strings
+        self.persistent_store = persistent_store
         self.agent = None
         self.react_agent_executor = None
         self.react_prompt_addition = PromptTemplate.from_template(
@@ -24,26 +31,34 @@ class ReactWithReflection:
         )
         self.reflection_max_iterations = config["reflection_max_iterations"]
         self.react_max_iterations = config["react_agent_max_iterations"]
+        self.vector_tool: Optional[VectorRerankerSearchTool] = None
 
-    def _initialize_tools(self, retriever, vector_store=None):
+    def _initialize_tools(self, vector_store):
         """Initialize the tools available to the agent."""
         self.tools = []
 
         if self.config.get("use_director_tool", False):
-            self.tools.append(CompanyDirectorsTool(self.config, self.director_strings))
+            self.tools.append(
+                CompanyDirectorsTool(self.config, self.director_strings, self.persistent_store)
+            )
 
         if self.config.get("use_web_tool", False):
             self.tools.append(WebSearchTool(self.config))
 
         if self.config.get("use_retriever_tool", False):
-            self.tools.append(VectorRerankerSearchTool(self.config, retriever, vector_store))
+            self.vector_tool = VectorRerankerSearchTool(
+                self.config, vector_store, self.persistent_store
+            )
+            self.tools.append(self.vector_tool)
 
         if self.config.get("use_linkedin_scraper_tool", False):
-            self.tools.append(LinkedinScraperTool(self.config))
+            self.tools.append(LinkedinScraperTool(self.config, self.persistent_store))
 
-    def initialize_agent(self, retriever, vector_store=None):
+    def initialize_agent(self, vector_store, ids_to_retrieve=None):
         """Initialize the REACT agent with reflection capabilities."""
-        self._initialize_tools(retriever, vector_store)
+        self._initialize_tools(vector_store)
+        if self.vector_tool:
+            self.vector_tool.set_filter_ids(ids_to_retrieve)
         prompt = PromptTemplate.from_template(self.config["react_prompt_template"])
         reflection_prompt = PromptTemplate.from_template(self.config["reflection_prompt_template"])
         llm = ChatOpenAI(

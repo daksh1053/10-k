@@ -3,18 +3,15 @@ Tools for REACT agents - web search, director lookup, and vector retrieval.
 """
 
 import os
-import json
 import requests
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from langchain_core.tools import BaseTool
-from langchain.utilities import SerpAPIWrapper
+from langchain_community.utilities import SerpAPIWrapper
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import CommaSeparatedListOutputParser
 from store.persistent import PersistentStore
-
-
 
 class CompanyDirectorsTool(BaseTool):
     """Tool for retrieving company director information with LinkedIn profiles."""
@@ -29,7 +26,12 @@ class CompanyDirectorsTool(BaseTool):
     name_extraction_prompt: Any
     name_extraction_chain: Any
 
-    def __init__(self, config: Dict[str, Any], director_strings_dict: dict, persistent_store: PersistentStore):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        director_strings_dict: dict,
+        persistent_store: Optional[PersistentStore] = None
+    ):
         available_companies = director_strings_dict.keys()
 
         super().__init__(
@@ -37,7 +39,7 @@ class CompanyDirectorsTool(BaseTool):
             description=f"{config['director_tool_description']} Available companies: {', '.join(available_companies)}",
             director_strings_dict=director_strings_dict,
             serp_api_obj=SerpAPIWrapper(),
-            persistent_store=persistent_store,
+            persistent_store=persistent_store or PersistentStore(),
             llm=ChatOpenAI(
                 model=config["name_extraction_model"],
                 temperature=config["name_extraction_model_temperature"]
@@ -135,28 +137,50 @@ class VectorRerankerSearchTool(BaseTool):
     reranker: Any
     persistent_store: Any
 
-    def __init__(self, config: Dict[str, Any], vector_store: Any, persistent_store: Any):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        vector_store: Any,
+        persistent_store: Optional[PersistentStore] = None,
+    ):
         from langchain_cohere import CohereRerank
+
+        chunk_k = config.get("chunk_k", 0)
+        table_k = config.get("table_k", 0)
 
         super().__init__(
             name=config["retriever_tool_name"],
             description=config["retriever_tool_description"],
             vector_store=vector_store,
-            chunk_k=config.get("chunk_k"),
-            table_k=config.get("tabel_k"),
+            chunk_k=int(chunk_k) if chunk_k is not None else 0,
+            table_k=int(table_k) if table_k is not None else 0,
             ids_to_retrieve=config.get("ids_to_retrieve"),
             reranker=CohereRerank(model=config["reranker_model"]),
-            persistent_store=persistent_store
+            persistent_store=persistent_store or PersistentStore()
         )
+
+    def set_filter_ids(self, ids: Optional[List[int]]) -> None:
+        self.ids_to_retrieve = ids
 
     def _run(self, query: str) -> str:
         try:
-            chunk_docs, table_docs = self.vector_store.retriever(query, self.chunk_k, self.table_k, self.ids_to_retrieve)
+            chunk_k = int(self.chunk_k) if self.chunk_k else 0
+            table_k = int(self.table_k) if self.table_k else 0
+            chunk_docs, table_docs = self.vector_store.retriever(
+                query,
+                chunk_k,
+                table_k,
+                self.ids_to_retrieve
+            )
 
-            if chunk_docs:
-                chunk_docs = self.rerank_documents(chunk_docs, query)[:self.chunk_k]
-            if table_docs:
-                table_docs = self.rerank_documents(table_docs, query)[:self.table_k]
+            if chunk_docs and chunk_k > 0:
+                chunk_docs = self.rerank_documents(chunk_docs, query)[:chunk_k]
+            else:
+                chunk_docs = []
+            if table_docs and table_k > 0:
+                table_docs = self.rerank_documents(table_docs, query)[:table_k]
+            else:
+                table_docs = []
 
             context_string = self._format_docs(chunk_docs + table_docs)
             context_string += "\n\n"
@@ -219,12 +243,16 @@ class LinkedinScraperTool(BaseTool):
     api_key: str
     persistent_store: PersistentStore
 
-    def __init__(self, config: Dict[str, Any], persistent_store: PersistentStore):
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        persistent_store: Optional[PersistentStore] = None
+    ):
         super().__init__(
             name=config["linkedin_scraper_tool_name"],
             description=config["linkedin_scraper_tool_description"],
             api_key=os.environ.get("RAPIDAPI_API_KEY"),
-            persistent_store=persistent_store
+            persistent_store=persistent_store or PersistentStore()
         )
 
     def _run(self, query: str) -> str:

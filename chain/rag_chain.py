@@ -34,6 +34,7 @@ class RAGChain:
         self.num_selected_documents = config.get("num_selected_documents", 5)
         self.reranker = CohereRerank(model=config["reranker_model"])
         self.chain = self._make_chain()
+        self._active_ids: Optional[List[int]] = None
 
     def _make_chain(self):
         return (
@@ -46,18 +47,22 @@ class RAGChain:
             | StrOutputParser()
         )
 
-    def query(self, question: str) -> str:
+    def query(self, question: str, ids_to_retrieve: Optional[List[int]] = None) -> str:
+        self._active_ids = ids_to_retrieve
         query_params = {
             "question": question
         }
-        return self.chain.invoke(query_params)
+        try:
+            return self.chain.invoke(query_params)
+        finally:
+            self._active_ids = None
 
 
     def _retrieve_context(self, query_params: Dict[str, Any]) -> str:
         question = query_params["question"]
-        chunk_k=self.config.get("chunk_k"),
-        table_k=self.config.get("tabel_k"),
-        ids_to_retrieve=self.config.get("ids_to_retrieve"),
+        chunk_k = int(self.config.get("chunk_k", 0))
+        table_k = int(self.config.get("table_k", 0))
+        ids_to_retrieve = self._active_ids if self._active_ids is not None else self.config.get("ids_to_retrieve")
 
         subqueries = decompose_query(self.config, question)
         if not subqueries:
@@ -68,9 +73,9 @@ class RAGChain:
             chunk_docs, table_docs = self.vector_store.retriever(subq, chunk_k, table_k, ids_to_retrieve)
 
             if chunk_docs:
-                chunk_docs = self.rerank_documents(chunk_docs, subq)[:chunk_k]
+                chunk_docs = self._rerank_documents(chunk_docs, subq)[:chunk_k]
             if table_docs:
-                table_docs = self.rerank_documents(table_docs, subq)[:table_k]
+                table_docs = self._rerank_documents(table_docs, subq)[:table_k]
 
             context_string += self._format_docs(chunk_docs + table_docs)
             context_string += "\n\n"
@@ -113,6 +118,13 @@ class RAGChain:
 
         return "\n\n".join(processed_docs)
 
+    def _rerank_documents(self, docs: List[Document], query: str) -> List[Document]:
+        if not docs:
+            return docs
+        try:
+            return self.reranker.compress_documents(docs, query)
+        except Exception:
+            return docs
 
 
 

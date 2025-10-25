@@ -1,2 +1,8 @@
 .venv/*
 .env
+*/__pycache__/
+app_data/
+chunk_store/
+extracted_tables*/
+table_summary_store/
+z2.py

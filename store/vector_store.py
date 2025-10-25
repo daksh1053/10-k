@@ -8,6 +8,7 @@ import numpy as np
 import requests
 from typing import Dict, Any, List, Optional
 import faiss
+from tqdm import tqdm
 from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
@@ -118,7 +119,7 @@ class EmbeddingService(Embeddings):
 
         batches = [(i, texts[i:i + batch_size]) for i in range(0, len(texts), batch_size)]
 
-        for batch_id, batch in batches:
+        for batch_id, batch in tqdm(batches, desc="Embedding batches", unit="batch"):
             start_time = time.time()
 
             # Retry logic for each batch

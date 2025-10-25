@@ -13,6 +13,7 @@ PyMuPDF>=1.23.0
 unstructured[all-docs]>=0.10.0
 requests>=2.31.0
 flask
+tqdm
 mysql-connector-python
 camelot-py>=1.0.9
 
