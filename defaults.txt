@@ -1,0 +1,5 @@
+    # Default company filing URLs
+    "company_filing_urls": [
+        ("Tesla", "https://www.sec.gov/Archives/edgar/data/1318605/000162828025003063/tsla-20241231.htm"),
+        ("General Motors", "https://www.sec.gov/ix?doc=/Archives/edgar/data/0001467858/000146785825000143/gm-20250930.htm")
+    ],
