@@ -56,24 +56,18 @@ class ReactAgent:
         prompt = PromptTemplate.from_template(self.config["react_prompt_template"])
         llm = ChatOpenAI(
             model=self.config["react_model_name"],
-            temperature=self.config["react_model_temperature"],
-            streaming=False,
-            disabled_params={"stop": None}  # GPT-5 doesn't support stop parameter
+            temperature=self.config["react_model_temperature"]
         )
 
         stop_sequence = self.config.get("react_agent_stop_sequence", True)
         self.agent = create_react_agent(llm, self.tools, prompt, stop_sequence=stop_sequence)
+        self.agent.stream_runnable = False  # Avoid OpenAI streaming requirement
 
         self.react_agent_executor = AgentExecutor(
             agent=self.agent,
             tools=self.tools,
-            verbose=self.config.get("react_verbosity", False),
-            handle_parsing_errors=True
+            verbose=self.config.get("react_verbosity", False)
         )
-
-        # Disable streaming at the agent executor level (required for unverified OpenAI orgs)
-        if hasattr(self.react_agent_executor.agent, 'stream_runnable'):
-            self.react_agent_executor.agent.stream_runnable = False
 
     def run(self, question: str) -> str:
         """Run the agent with a question."""

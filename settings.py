@@ -143,6 +143,7 @@ DEFAULT_CONFIG = {
 
     "react_verbosity": True,
     "react_agent_max_iterations": 25,
+    "react_agent_stop_sequence": False,
 
     # Reflection settings
     "reflection_prompt_template": """Your task is to analyze whether the `Answer` is missing some information related to the `Question`.
